@@ -65,14 +65,20 @@ class CinemaHallViewSet(
 @extend_schema_view(
     list=extend_schema(
         parameters=[
-            OpenApiParameter("title", type=str),
+            OpenApiParameter(
+                "title",
+                type=str,
+                description="Filter by movie title (case-insensitive)"
+            ),
             OpenApiParameter(
                 "genres",
-                type={"type": "array", "items": {"type": "number"}}
+                type={"type": "array", "items": {"type": "number"}},
+                description="Filter by genre IDs (comma-separated, e.g. 1,2,3)"
             ),
             OpenApiParameter(
                 "actors",
-                type={"type": "array", "items": {"type": "number"}}
+                type={"type": "array", "items": {"type": "number"}},
+                description="Filter by actor IDs (comma-separated, e.g. 1,2,3)"
             ),
         ]
     )
@@ -142,6 +148,22 @@ class MovieViewSet(
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "date",
+                type=str,
+                description="Filter by session date (e.g. YYYY-MM-DD)"
+            ),
+            OpenApiParameter(
+                "movie",
+                type=int,
+                description="Filter by movie ID"
+            ),
+        ]
+    )
+)
 class MovieSessionViewSet(viewsets.ModelViewSet):
     queryset = MovieSession.objects.all().select_related(
         "movie", "cinema_hall"
