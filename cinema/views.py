@@ -8,6 +8,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
@@ -16,10 +17,18 @@ from rest_framework.viewsets import GenericViewSet
 from cinema.models import Genre, Actor, CinemaHall, Movie, MovieSession, Order
 from cinema.permissions import IsAdminOrIfAuthenticatedReadOnly
 from cinema.serializers import (
-    GenreSerializer, ActorSerializer, CinemaHallSerializer,
-    MovieSerializer, MovieSessionSerializer, MovieSessionListSerializer,
-    MovieDetailSerializer, MovieSessionDetailSerializer, MovieListSerializer,
-    OrderSerializer, OrderListSerializer, MovieImageSerializer,
+    GenreSerializer,
+    ActorSerializer,
+    CinemaHallSerializer,
+    MovieSerializer,
+    MovieSessionSerializer,
+    MovieSessionListSerializer,
+    MovieDetailSerializer,
+    MovieSessionDetailSerializer,
+    MovieListSerializer,
+    OrderSerializer,
+    OrderListSerializer,
+    MovieImageSerializer,
 )
 
 
@@ -56,18 +65,14 @@ class CinemaHallViewSet(
 @extend_schema_view(
     list=extend_schema(
         parameters=[
-            OpenApiParameter(
-                "title", type=str, description="Filter by title"
-            ),
+            OpenApiParameter("title", type=str),
             OpenApiParameter(
                 "genres",
-                type={"type": "array", "items": {"type": "number"}},
-                description="Filter by genre ids"
+                type={"type": "array", "items": {"type": "number"}}
             ),
             OpenApiParameter(
                 "actors",
-                type={"type": "array", "items": {"type": "number"}},
-                description="Filter by actor ids"
+                type={"type": "array", "items": {"type": "number"}}
             ),
         ]
     )
@@ -84,21 +89,31 @@ class MovieViewSet(
 
     @staticmethod
     def _params_to_ints(qs):
-        return [int(str_id) for str_id in qs.split(",")]
+        return [int(str_id) for str_id in qs.split(",") if str_id.strip()]
 
     def get_queryset(self):
         title = self.request.query_params.get("title")
         genres = self.request.query_params.get("genres")
         actors = self.request.query_params.get("actors")
         queryset = self.queryset
+
         if title:
             queryset = queryset.filter(title__icontains=title)
+
         if genres:
-            genres_ids = self._params_to_ints(genres)
-            queryset = queryset.filter(genres__id__in=genres_ids)
+            try:
+                genres_ids = self._params_to_ints(genres)
+                queryset = queryset.filter(genres__id__in=genres_ids)
+            except ValueError:
+                raise ValidationError({"genres": "Invalid format."})
+
         if actors:
-            actors_ids = self._params_to_ints(actors)
-            queryset = queryset.filter(actors__id__in=actors_ids)
+            try:
+                actors_ids = self._params_to_ints(actors)
+                queryset = queryset.filter(actors__id__in=actors_ids)
+            except ValueError:
+                raise ValidationError({"actors": "Invalid format."})
+
         return queryset.distinct()
 
     def get_serializer_class(self):
@@ -119,24 +134,14 @@ class MovieViewSet(
     def upload_image(self, request, pk=None):
         movie = self.get_object()
         serializer = self.get_serializer(movie, data=request.data)
+
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@extend_schema_view(
-    list=extend_schema(
-        parameters=[
-            OpenApiParameter(
-                "date", type=str, description="Filter by date (YYYY-MM-DD)"
-            ),
-            OpenApiParameter(
-                "movie", type=int, description="Filter by movie ID"
-            ),
-        ]
-    )
-)
 class MovieSessionViewSet(viewsets.ModelViewSet):
     queryset = MovieSession.objects.all().select_related(
         "movie", "cinema_hall"
@@ -154,11 +159,20 @@ class MovieSessionViewSet(viewsets.ModelViewSet):
         date = self.request.query_params.get("date")
         movie_id_str = self.request.query_params.get("movie")
         queryset = self.queryset
+
         if date:
-            date = datetime.strptime(date, "%Y-%m-%d").date()
-            queryset = queryset.filter(show_time__date=date)
+            try:
+                date = datetime.strptime(date, "%Y-%m-%d").date()
+                queryset = queryset.filter(show_time__date=date)
+            except ValueError:
+                raise ValidationError({"date": "Use YYYY-MM-DD format."})
+
         if movie_id_str:
-            queryset = queryset.filter(movie_id=int(movie_id_str))
+            try:
+                queryset = queryset.filter(movie_id=int(movie_id_str))
+            except ValueError:
+                raise ValidationError({"movie": "Must be an integer."})
+
         return queryset
 
     def get_serializer_class(self):
